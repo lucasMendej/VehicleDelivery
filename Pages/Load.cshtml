@@ -1,0 +1,75 @@
+@page
+@model Afleverlijst.Pages.LoadModel
+@{
+    ViewData["Title"] = "Load diagnostics";
+}
+
+<div class="page-shell load-page" data-load-diagnostics data-load-set="@Model.Set" data-load-base-path="@Url.Content("~/")">
+    <header class="page-header diagnostics-header">
+        <div><div class="eyebrow">Afleverplanning / Diagnostics</div><h1>Data load</h1><p class="page-subtitle">Start en volg de initiële load en synchronisatie per bronset.</p></div>
+        <div class="header-actions"><a class="connection-pill" href="/?_set=@Model.Set">← Terug naar afleverplanning</a><span class="user-pill">_set=@Model.Set</span></div>
+    </header>
+
+    <section class="diagnostics-grid">
+        <div class="diagnostics-card">
+            <div class="panel-heading"><div><span class="eyebrow">Huidige status</span><h2>@Model.Status.SourceName</h2></div><span class="badge badge-@Model.Status.State">@Model.Status.State</span></div>
+            <dl class="status-details">
+                <dt>Set</dt><dd>@Model.Set</dd>
+                <dt>DSN</dt><dd class="mono">@Model.Status.Dsn</dd>
+                <dt>Laatste mode</dt><dd>@(Model.Status.LastMode.Length == 0 ? "—" : Model.Status.LastMode)</dd>
+                <dt>Actieve schermen</dt><dd>@Model.Status.ActiveSessions</dd>
+                <dt>Laatste steun-tabellen</dt><dd>@(Model.Status.LastSupportRefreshAt?.ToString("dd-MM-yyyy HH:mm:ss") ?? "—")</dd>
+                <dt>Laatste sync</dt><dd>@(Model.Status.LastSyncAt?.ToString("dd-MM-yyyy HH:mm:ss") ?? "—")</dd>
+            </dl>
+            @if (Model.Status.Error is not null) { <pre class="diagnostic-error">@Model.Status.Error</pre> }
+            <div class="load-actions">
+                <form method="post" asp-page-handler="Initial"><input type="hidden" name="_set" value="@Model.Set" /><button class="button-primary" type="submit">Start initiële load</button></form>
+                <form method="post" asp-page-handler="Sync"><input type="hidden" name="_set" value="@Model.Set" /><button class="button-secondary" type="submit">Start sync</button></form>
+                <form method="post" asp-page-handler="Process"><input type="hidden" name="_set" value="@Model.Set" /><button class="button-secondary" type="submit">Verwerk SQLite naar rapportage</button></form>
+            </div>
+        </div>
+        <div class="diagnostics-card">
+            <span class="eyebrow">Lifecycle</span><h2>Automatische werking</h2>
+            <ul class="diagnostic-list"><li>De eerste gebruiker met deze set start automatisch de initiële load als de set nog niet is geladen.</li><li>Open schermen sturen iedere 30 seconden een heartbeat.</li><li>De background service controleert iedere @Model.SyncIntervalMinutes minuten op actieve schermen en start dan een sync.</li><li>Na het verdwijnen van de laatste heartbeat wordt voor die set niet meer gesynchroniseerd.</li><li>Steuntabellen worden bij de initiële load meegenomen en hebben een eigen dagstatus.</li></ul>
+        </div>
+    </section>
+
+    <section class="diagnostics-card log-card">
+        <div class="table-toolbar"><div><span class="eyebrow">Execution log</span><h2>Load log</h2></div><span class="toolbar-meta">maximaal 500 regels per set</span></div>
+        <pre class="load-log" data-load-log>@string.Join(Environment.NewLine, Model.Status.Logs.Select(x => $"[{x.At:yyyy-MM-dd HH:mm:ss zzz}] {x.Level.ToUpperInvariant(),-7} {x.Step}: {x.Message}"))</pre>
+    </section>
+
+    <section class="diagnostics-grid selection-grid">
+        <div class="diagnostics-card"><span class="eyebrow">Initial mode</span><h2>Uitgevoerde selecties</h2><pre class="sql-block">@Model.InitialSelections</pre></div>
+        <div class="diagnostics-card"><span class="eyebrow">Sync mode</span><h2>Uitgevoerde selecties</h2><pre class="sql-block">@Model.SyncSelections</pre></div>
+    </section>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const root = document.querySelector('[data-load-diagnostics]');
+    if (!root) return;
+    const set = root.dataset.loadSet;
+    const basePath = root.dataset.loadBasePath || '/';
+    const apiPath = path => `${basePath.replace(/\/$/, '')}/${path}`;
+    const log = root.querySelector('[data-load-log]');
+    let wasRunning = false;
+    let reloadIssued = false;
+    window.setInterval(async () => {
+        try {
+            const response = await fetch(`${apiPath('api/load/status')}?_set=${encodeURIComponent(set)}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (log && Array.isArray(data.logs)) log.textContent = data.logs.map(x => `[${x.at}] ${(x.level || '').toUpperCase().padEnd(7)} ${x.step}: ${x.message}`).join('\n');
+            const running = data.state === 'initial_loading' || data.state === 'syncing' || data.state === 'processing';
+            if (wasRunning && !running && !reloadIssued) {
+                reloadIssued = true;
+                window.location.reload();
+            }
+            wasRunning = running;
+        } catch { }
+    }, 5000);
+})();
+</script>
+}

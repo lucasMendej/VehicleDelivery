@@ -1,0 +1,132 @@
+@page "/vsb"
+@model VsbModel
+@using Afleverlijst.Models
+@{
+    ViewData["Title"] = "Afleverplanning";
+    var result = Model.Result;
+    var total = result.Records.Count;
+    var lastSync = Model.LoadStatus.LastSyncAt;
+    var syncHealthy = Model.LoadStatus.State != "failed"
+        && Model.LoadStatus.Error is null
+        && lastSync is not null
+        && lastSync.Value >= DateTimeOffset.Now.AddMinutes(-30);
+}
+
+<div class="page-shell" data-load-set="@Model.Set" data-load-session="@Model.SessionId" data-load-version="@Model.LoadStatus.Version" data-load-base-path="@Url.Content("~/")">
+    <header class="top-band">
+        <div class="page-intro"><h1>VSB Afleverplanning</h1><p class="page-subtitle">Overzicht van nieuwe VSB records met een verwachte afleverdatum en gebruikte met een afleverdatum in de toekomst.</p></div>
+        <section class="kpi-grid" aria-label="Samenvatting">
+            <a class="kpi-card kpi-filter-card @(Model.PushToWorkshop ? "is-active" : "")" href="@Model.PushToWorkshopUrl()" aria-label="Filter dossiers om naar de werkplaats te pushen">
+                <span class="kpi-label">Pushen naar werkplaats krijgen</span>
+                <strong>@Model.PushToWorkshopCount</strong>
+                <span class="kpi-hint">Verkocht, chassis gevuld en WP-regels niet gepushed</span>
+            </a>
+            <div class="kpi-card"><span class="kpi-label">Aflevering 7 dagen</span><strong>@result.Records.Count(x => x.DeliveryDate is not null && x.DeliveryDate >= DateOnly.FromDateTime(DateTime.Today) && x.DeliveryDate <= DateOnly.FromDateTime(DateTime.Today.AddDays(7)))</strong><span class="kpi-hint">Vandaag t/m @DateTime.Today.AddDays(7).ToString("dd-MM")</span></div>
+            <div class="kpi-card kpi-card-accent"><span class="kpi-label">Gereed</span><strong>@result.Records.Count(x => x.Selected)</strong><span class="kpi-hint">Aangevinkte regels</span></div>
+            <button type="button" class="kpi-card kpi-filter-card" data-filter-toggle aria-controls="delivery-filter-panel" aria-expanded="false">
+                <span class="kpi-filter-icon" aria-hidden="true"></span>
+                <span class="kpi-label">Open dossiers</span>
+                <strong>@total</strong>
+                <span class="kpi-hint">@FilterSummary()</span>
+            </button>
+        </section>
+    </header>
+    <div class="dashboard-meta @(Model.LoadStatus.IsRunning && Model.LoadStatus.LastMode.StartsWith("initial", StringComparison.OrdinalIgnoreCase) ? "is-loading" : "")">
+        <div class="header-actions"><span class="connection-pill"><span class="status-dot"></span> @Model.LoadStatus.SourceName</span><span class="sync-pill" title="Tijd van de laatste sync"><span class="sync-dot @(syncHealthy ? "sync-dot-ok" : "sync-dot-error")"></span> @(lastSync?.ToString("HH:mm") ?? "--:--")</span></div>
+        <div class="load-status @(Model.LoadStatus.IsRunning && Model.LoadStatus.LastMode.StartsWith("initial", StringComparison.OrdinalIgnoreCase) ? "is-loading" : "")" data-load-status aria-live="polite">
+        <span class="load-spinner" data-load-spinner></span>
+        <span data-load-message>@(Model.LoadStatus.IsRunning ? $"{Model.LoadStatus.LastMode} load wordt uitgevoerdâ€¦" : $"Bronstatus: {Model.LoadStatus.State}")</span>
+        </div>
+    </div>
+    @if (TempData["SavedMessage"] is string message) { <div class="alert-success">@message</div> }
+    <div class="workspace-grid">
+        <main class="table-panel">
+            <div class="table-toolbar"><div><span class="eyebrow">Resultaat</span><h2>Afleverplanning Verkoopadministratie</h2></div><div class="toolbar-actions"><span class="toolbar-meta">@total dossiers <span class="divider">·</span> standaard sortering: aflevering</span><button class="button-primary save-button" type="submit" form="save-form">Selectie en notities opslaan</button></div></div>
+            <form id="save-form" method="post" asp-page-handler="Save" asp-route-_set="@Model.Set">
+                <input type="hidden" name="_set" value="@Model.Set" />
+                <input type="hidden" name="DeliveryStatus" value="@Model.DeliveryStatus" />
+                <input type="hidden" name="Brand" value="@Model.Brand" />
+                <input type="hidden" name="VehicleType" value="@Model.VehicleType" />
+                <input type="hidden" name="SalesLocation" value="@Model.SalesLocation" />
+                <input type="hidden" name="PrepLocation" value="@Model.PrepLocation" />
+                <input type="hidden" name="WorkshopLocation" value="@Model.WorkshopLocation" />
+                <input type="hidden" name="Salesperson" value="@Model.Salesperson" />
+                <input type="hidden" name="Customer" value="@Model.Customer" />
+                <input type="hidden" name="Sort" value="@Model.Sort" />
+                <input type="hidden" name="Descending" value="@Model.Descending" />
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th><a href="@Model.SortUrl("vsb_number")">VSB @SortMark("vsb_number")</a></th><th><a href="@Model.SortUrl("customer_name")">Klant @SortMark("customer_name") <span class="info-icon" title="De eerste naam is de klantnaam.&#10;De tweede naam is de naam waarop de factuur komt.">i</span></a></th><th>Voertuig</th><th><a href="@Model.SortUrl("salesperson")">Verkoper @SortMark("salesperson")</a></th><th><span class="header-label">Locaties <span class="info-icon" title="V: Verkoop&#10;P: Fysiek">i</span></span></th><th>Ontvangst</th><th><a href="@Model.SortUrl("delivery_date")">Aflever <span class="info-icon" title="Oranje label: aflevering vandaag of morgen, maar nog niet alle WP-regels zijn gefactureerd.&#10;Grijze label: aflevering binnen 7 dagen, maar nog niet alle WP-regels zijn gepushed.">i</span> @SortMark("delivery_date")</a></th><th><a href="@Model.SortUrl("delivery_status")"><span class="header-label">Status <span class="info-icon" title="Binnen: het voertuig is ontvangen.&#10;Binnen 2 weken: verwachte ontvangst is binnen 14 dagen.&#10;Verwacht in 2 weken: verwachte ontvangst ligt meer dan 14 dagen vooruit.&#10;Gepushed: er is een werkplaatsregel naar de werkplaats gestuurd.&#10;Aangemaakt: er is een werkorder aangemaakt.&#10;Gefactureerd: alle werkplaatsregels hebben status R.&#10;De meest vergevorderde status wordt getoond.">i</span></span> @SortMark("delivery_status")</a></th><th><span class="header-label">WP regels <span class="info-icon" title="Eerste getal: totaal aantal werkplaatsregels.&#10;Tweede getal: aantal regels dat gepushed is.&#10;Derde getal: aantal regels dat op een werkorder staat.">i</span></span></th><th>Notitie</th><th class="check-col">Gepoetst?</th><th class="check-col">Gereed?</th></tr></thead>
+                        <tbody>
+                        @foreach (var row in result.Records)
+                        {
+                            <tr class="@(row.Selected ? "is-selected" : "")">
+                                <td><input type="hidden" name="VisibleIds" value="@row.VsbNumber" /><strong class="mono">@row.VsbNumber</strong><span class="subtle">@row.VehicleType · @row.CommissionNumber</span></td>
+                                <td><span class="cell-primary">@row.CustomerName</span><span class="subtle">@row.InvoiceName</span></td>
+                                <td><span class="cell-primary">@row.Model</span><span class="subtle">@(row.LicensePlate ?? "Kenteken onbekend")@(row.Chassis.Length > 0 ? $" - {row.Chassis}" : string.Empty)</span></td>
+                                <td><span class="cell-primary">@row.Salesperson</span></td><td><span class="subtle">V: @row.SalesLocation</span><span class="subtle">P: @row.PrepLocation</span></td>
+                                <td>
+                                    @if (row.ActualArrival is not null)
+                                    {
+                                        <span class="subtle">Ontvangst</span><span class="date">@FormatDate(row.ActualArrival)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="subtle">Verwachte datum</span><span class="date">@FormatDate(row.ExpectedArrival)</span>
+                                    }
+                                </td>
+                                <td><span class="date date-pill @DeliveryDateClass(row)">@FormatDate(row.DeliveryDate)</span></td><td><span class="badge badge-@StatusClass(row.DeliveryStatus)">@row.DeliveryStatus</span></td>
+                                <td><span class="progress-value @WorkshopClass(row)" title="@row.WorkshopTip">@row.WorkshopRules / @row.WorkshopForwarded / @row.WorkshopOnOrder</span>@if (row.WorkshopOrders.Length > 0) { <span class="subtle">@row.WorkshopOrders</span> }</td><td><input class="row-note" name="Notes[@row.VsbNumber]" value="@row.UserNote" placeholder="Notitie..." /></td><td class="check-col"><input type="checkbox" name="PolishedIds" value="@row.VsbNumber" checked="@(row.Polished ? "checked" : null)" title="@row.PolishedTooltip" aria-label="Gepoetst @row.VsbNumber" /></td><td class="check-col"><input type="checkbox" name="SelectedIds" value="@row.VsbNumber" checked="@(row.Selected ? "checked" : null)" title="@row.ReadyTooltip" aria-label="Gereed @row.VsbNumber" /></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-footer"><span>@total van @total dossiers weergegeven</span></div>
+            </form>
+        </main>
+        <aside id="delivery-filter-panel" class="filter-panel filter-drawer" hidden>
+            <div class="panel-heading"><div><span class="eyebrow">Selectie</span><h2>Filters</h2></div><div class="filter-panel-actions"><a class="clear-link" asp-page="/Vsb" asp-route-_set="@Model.Set">Wis alles</a><button type="button" class="drawer-close" data-filter-close aria-label="Filters sluiten">×</button></div></div>
+            <form method="get" class="filter-form">
+                <input type="hidden" name="_set" value="@Model.Set" />
+                <label>Ontvangst status<select name="DeliveryStatus"><option value="">Alle statussen</option>@foreach (var option in result.StatusOptions) { <option value="@option" selected="@(Model.DeliveryStatus == option ? "selected" : null)">@option</option> }</select></label>
+                <label>Merk<select name="Brand"><option value="">Alle merken</option>@foreach (var option in result.BrandOptions) { <option value="@option" selected="@(Model.Brand == option ? "selected" : null)">@option</option> }</select></label>
+                <label>Nieuw of gebruikt<select name="VehicleType"><option value="">Alle types</option>@foreach (var option in result.VehicleTypeOptions) { <option value="@option" selected="@(Model.VehicleType == option ? "selected" : null)">@option</option> }</select></label>
+                <label>W-regels voor vestiging<select name="WorkshopLocation"><option value="">Alle W-regels voor vestigingen</option>@foreach (var option in result.WorkshopLocationOptions) { <option value="@option" selected="@(Model.WorkshopLocation == option ? "selected" : null)">@option</option> }</select></label>
+                <label>Vestiging<select name="SalesLocation"><option value="">Alle vestigingen</option>@foreach (var option in result.SalesLocationOptions) { <option value="@option" selected="@(Model.SalesLocation == option ? "selected" : null)">@option</option> }</select></label>
+                <label>Filter verkoper<input name="Salesperson" value="@Model.Salesperson" placeholder="Zoek op verkoper" /></label>
+                <label>Filter klant<input name="Customer" value="@Model.Customer" placeholder="Zoek op klant" /></label>
+                <button class="button-primary" type="submit">Filters toepassen <span>â†’</span></button>
+            </form>
+        </aside>
+    </div>
+</div>
+
+@functions {
+    string FormatDate(DateOnly? value) => value?.ToString("dd-MM-yyyy") ?? "â€”";
+    string DeliveryDateClass(DeliveryRecord row)
+    {
+        if (row.DeliveryDate is null) return string.Empty;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (row.DeliveryDate.Value >= today && row.DeliveryDate.Value <= today.AddDays(1) && row.WorkshopInvoiced < row.WorkshopRules) return "date-pill-warning";
+        if (row.DeliveryDate.Value >= today && row.DeliveryDate.Value <= today.AddDays(7) && row.WorkshopForwarded < row.WorkshopRules) return "date-pill-muted";
+        return string.Empty;
+    }
+    string StatusClass(string status) => status switch { "Afleverklaar" => "success", "Verwacht in 2 weken" => "warning", "Binnen 2 weken" => "warning", "Binnen" => "info", "Gepushed" => "info", "Aangemaakt" => "success", "Gefactureerd" => "success", "Afgeleverd" => "neutral", _ => "muted" };
+    string WorkshopClass(DeliveryRecord row) => row.WorkshopOnOrder < row.WorkshopForwarded ? "workshop-pill-info" : string.Empty;
+    string FilterSummary()
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Model.WorkshopLocation)) parts.Add($"met WP-regels voor {Model.WorkshopLocation}");
+        if (!string.IsNullOrWhiteSpace(Model.DeliveryStatus)) parts.Add($"status {Model.DeliveryStatus}");
+        if (!string.IsNullOrWhiteSpace(Model.Brand)) parts.Add($"merk {Model.Brand}");
+        if (!string.IsNullOrWhiteSpace(Model.VehicleType)) parts.Add(Model.VehicleType.ToLowerInvariant());
+        if (!string.IsNullOrWhiteSpace(Model.SalesLocation)) parts.Add($"vestiging {Model.SalesLocation}");
+        if (!string.IsNullOrWhiteSpace(Model.Salesperson)) parts.Add($"verkoper {Model.Salesperson}");
+        if (!string.IsNullOrWhiteSpace(Model.Customer)) parts.Add($"klant {Model.Customer}");
+        return parts.Count == 0 ? "Klik hier om het juiste filter in te stellen" : $"Alle dossiers {string.Join(", ", parts)}";
+    }
+    string SortMark(string field) => Model.Sort.Equals(field, StringComparison.OrdinalIgnoreCase) ? (Model.Descending ? "â†“" : "â†‘") : "";
+}
+
+

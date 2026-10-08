@@ -1,0 +1,69 @@
+{
+  "initial": [
+    {
+      "name": "vehicles.new.initial",
+      "purpose": "Volledige voertuigselectie voor een initiële load",
+      "sql": "SELECT vehicle, FRAN as LETTER, DESC002 as [DESC_], REGN, exec001, SELLLOCN, BUYLOCN, NAME_, INAME, RECDATEE, RECDATE, {DELIVERY_DATE} FROM vs_00_newvehiclestock WHERE {DELIVERY_DATE} >= CURDATE()",
+      "outputName": "vehicles.initial"
+    },
+    {
+      "name": "vehicles.used.initial",
+      "purpose": "Volledige gebruikte voertuigselectie voor een initiële load",
+      "sql": "SELECT vehicle, FRAN as LETTER, DESC002 as [DESC_], REGN, exec001, SELLLOCN, BUYLOCN, NAME_, INAME, SALEDATE, SINVDATE, {DELIVERY_DATE} FROM vs_00_usedvehiclestock WHERE {DELIVERY_DATE} >= CURDATE()",
+      "outputName": "vehicles.initial"
+    },
+    {
+      "name": "support.brands",
+      "purpose": "Steuntabel merken",
+      "sql": "SELECT DISTINCT LETTER, DESC002 FROM DD_00_FRANCHISERECORDS"
+    },
+    {
+      "name": "support.salespersons",
+      "purpose": "Steuntabel verkopers",
+      "sql": "select DISTINCT userid, name_ from gb_00_userdetails"
+    },
+    {
+      "name": "support.locations",
+      "purpose": "Steuntabel locaties",
+      "sql": "select code, name_ from gb_00_companylocations where type_ in ('C', 'S')"
+    },
+    {
+      "name": "vehicle.new.specifications.initial",
+      "purpose": "Werkplaatsregels gekoppeld aan de initiële voertuigen",
+        "sql": "SELECT s.MAGIC, s.VTYPE, s.desc002, s.socomp, s.poshdr, s.orderno, s.coststat FROM vs_00_vehiclespecification s WHERE VTYPE = 'N' and MAGIC in (select vehicle from vs_00_newvehiclestock WHERE {DELIVERY_DATE} >= CURDATE()) and source = 'W'",
+      "outputName": "vehicle.specifications.initial"
+    },
+    {
+      "name": "vehicle.used.specifications.initial",
+      "purpose": "Werkplaatsregels gekoppeld aan de initiële voertuigen",
+        "sql": "SELECT s.MAGIC, s.VTYPE, s.desc002, s.socomp, s.poshdr, s.orderno, s.coststat FROM vs_00_vehiclespecification s WHERE VTYPE = 'U' and MAGIC in (select vehicle from vs_00_usedvehiclestock WHERE {DELIVERY_DATE} >= CURDATE()) and source = 'W'",
+      "outputName": "vehicle.specifications.initial"
+    }
+  ],
+  "sync": [
+    {
+      "name": "vehicles.new.sync",
+      "purpose": "Nieuwe voertuigen die volgens de recovery audit opnieuw moeten worden geladen",
+      "sql": "SELECT vehicle, FRAN as LETTER, desc002 as [DESC_], REGN, exec001, SELLLOCN, BUYLOCN, NAME_, INAME, RECDATEE, RECDATE, {DELIVERY_DATE} FROM vs_00_newvehiclestock WHERE {DELIVERY_DATE} >= CURDATE() AND VEHICLE IN (SELECT DISTINCT VEHICLE FROM VS_00_AUDITRECOVERYLOG WHERE VTYPE = 'N')",
+      "outputName": "vehicles.sync"
+    },
+    {
+      "name": "vehicles.used.sync",
+      "purpose": "Gebruikte voertuigen die volgens de recovery audit opnieuw moeten worden geladen",
+      "sql": "SELECT vehicle, FRAN as LETTER, desc002 as [DESC_], REGN, exec001, SELLLOCN, BUYLOCN, NAME_, INAME, SALEDATE, SINVDATE, {DELIVERY_DATE} FROM vs_00_usedvehiclestock WHERE {DELIVERY_DATE} >= CURDATE() AND VEHICLE IN (SELECT DISTINCT VEHICLE FROM VS_00_AUDITRECOVERYLOG WHERE VTYPE = 'U')",
+      "outputName": "vehicles.sync"
+    },
+    {
+      "name": "vehicle.new.specifications.sync",
+      "purpose": "Specificaties van nieuwe voertuigen die volgens de recovery audit opnieuw moeten worden geladen",
+        "sql": "SELECT s.MAGIC, s.VTYPE, s.desc002, s.socomp, s.poshdr, s.orderno, s.coststat FROM vs_00_vehiclespecification s WHERE VTYPE = 'N' AND MAGIC IN (SELECT DISTINCT VEHICLE FROM VS_00_AUDITRECOVERYLOG WHERE VTYPE = 'N') AND source = 'W'",
+      "outputName": "vehicle.specifications.sync"
+    },
+    {
+      "name": "vehicle.used.specifications.sync",
+      "purpose": "Specificaties van gebruikte voertuigen die volgens de recovery audit opnieuw moeten worden geladen",
+        "sql": "SELECT s.MAGIC, s.VTYPE, s.desc002, s.socomp, s.poshdr, s.orderno, s.coststat FROM vs_00_vehiclespecification s WHERE VTYPE = 'U' AND MAGIC IN (SELECT DISTINCT VEHICLE FROM VS_00_AUDITRECOVERYLOG WHERE VTYPE = 'U') AND source = 'W'",
+      "outputName": "vehicle.specifications.sync"
+    }
+  ]
+}

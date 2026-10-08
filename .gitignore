@@ -1,0 +1,13 @@
+bin/
+obj/
+build-check/
+publish/
+.vs/
+*.user
+*.suo
+*.sqlite
+*.db
+logs/
+.keys/
+.samples/
+.probe/
